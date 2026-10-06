@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>在线图片编辑器 - 裁剪 / 滤镜 / 调节</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    min-height: 100vh;
+  }
+  .header {
+    text-align: center;
+    padding: 20px;
+    background: #16213e;
+  }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header p { font-size: 13px; color: #888; margin-top: 4px; }
+  .container {
+    max-width: 1200px;
+    margin: 20px auto;
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 20px;
+    padding: 0 20px;
+  }
+  .canvas-area {
+    background: #0f0f1a;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 500px;
+    position: relative;
+    overflow: hidden;
+  }
+  canvas {
+    max-width: 100%;
+    max-height: 600px;
+    border-radius: 8px;
+    cursor: crosshair;
+  }
+  .placeholder {
+    text-align: center;
+    color: #555;
+  }
+  .placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+  .sidebar {
+    background: #16213e;
+    border-radius: 12px;
+    padding: 20px;
+    height: fit-content;
+  }
+  .section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .upload-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: #e94560;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: background 0.2s;
+  }
+  .upload-btn:hover { background: #ff6b81; }
+  .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    flex: 1;
+    min-width: 60px;
+    padding: 8px 12px;
+    background: #2a2a4a;
+    color: #ddd;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #3a3a6a; }
+  .btn.active { background: #e94560; color: white; }
+  .slider-group { margin-bottom: 14px; }
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #aaa;
+    margin-bottom: 6px;
+  }
+  .slider-label span:last-child { color: #e94560; font-weight: 600; }
+  input[type="range"] {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    background: #2a2a4a;
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: #e94560;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .filter-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .filter-preset {
+    padding: 6px 4px;
+    background: #2a2a4a;
+    border: none;
+    border-radius: 6px;
+    color: #ddd;
+    font-size: 11px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .filter-preset:hover { background: #3a3a6a; }
+  .filter-preset.active { background: #e94560; color: white; }
+  .export-btn {
+    width: 100%;
+    padding: 12px;
+    background: #0f3460;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: background 0.2s;
+  }
+  .export-btn:hover { background: #1a56a0; }
+  .export-btn:disabled { background: #2a2a4a; cursor: not-allowed; }
+  #fileInput { display: none; }
+  .crop-overlay {
+    position: absolute;
+    border: 2px dashed #e94560;
+    background: rgba(233, 69, 96, 0.1);
+    display: none;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎨 在线图片编辑器</h1>
+  <p>裁剪 · 滤镜 · 调色 · 导出 — 纯前端 Canvas 实现</p>
+</div>
+
+<div class="container">
+  <div class="canvas-area" id="canvasArea">
+    <div class="placeholder" id="placeholder">
+      <div class="icon">🖼️</div>
+      <p>点击左侧「上传图片」开始编辑</p>
+    </div>
+    <canvas id="canvas" style="display:none"></canvas>
+    <div class="crop-overlay" id="cropOverlay"></div>
+  </div>
+
+  <div class="sidebar">
+    <div class="section">
+      <div class="section-title">操作</div>
+      <button class="upload-btn" onclick="document.getElementById('fileInput').click()">📁 上传图片</button>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div class="section">
+      <div class="section-title">旋转 / 翻转</div>
+      <div class="btn-group">
+        <button class="btn" onclick="rotate(-90)">⟲ 左转</button>
+        <button class="btn" onclick="rotate(90)">⟳ 右转</button>
+        <button class="btn" onclick="flipH()">↔ 水平</button>
+        <button class="btn" onclick="flipV()">↕ 垂直</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">裁剪</div>
+      <div class="btn-group">
+        <button class="btn" id="cropModeBtn" onclick="toggleCropMode()">✂️ 裁剪模式</button>
+        <button class="btn" onclick="applyCrop()">✓ 应用裁剪</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">滤镜预设</div>
+      <div class="filter-presets">
+        <button class="filter-preset active" data-filter="none">原图</button>
+        <button class="filter-preset" data-filter="warm">暖阳</button>
+        <button class="filter-preset" data-filter="cool">冷调</button>
+        <button class="filter-preset" data-filter="vintage">复古</button>
+        <button class="filter-preset" data-filter="bw">黑白</button>
+        <button class="filter-preset" data-filter="film">胶片</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">精细调节</div>
+      <div class="slider-group">
+        <div class="slider-label"><span>亮度</span><span id="brightnessVal">100%</span></div>
+        <input type="range" id="brightness" min="0" max="200" value="100">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>对比度</span><span id="contrastVal">100%</span></div>
+        <input type="range" id="contrast" min="0" max="200" value="100">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>饱和度</span><span id="saturateVal">100%</span></div>
+        <input type="range" id="saturate" min="0" max="200" value="100">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>灰度</span><span id="grayscaleVal">0%</span></div>
+        <input type="range" id="grayscale" min="0" max="100" value="0">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>模糊</span><span id="blurVal">0px</span></div>
+        <input type="range" id="blur" min="0" max="20" value="0">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>棕褐</span><span id="sepiaVal">0%</span></div>
+        <input type="range" id="sepia" min="0" max="100" value="0">
+      </div>
+    </div>
+
+    <div class="section">
+      <button class="btn" style="width:100%; margin-bottom:8px;" onclick="resetAll()">🔄 重置全部</button>
+      <button class="export-btn" id="exportBtn" onclick="exportImage()" disabled>💾 导出图片</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasArea = document.getElementById('canvasArea');
+const placeholder = document.getElementById('placeholder');
+const fileInput = document.getElementById('fileInput');
+const cropOverlay = document.getElementById('cropOverlay');
+const cropModeBtn = document.getElementById('cropModeBtn');
+
+let originalImage = null;
+let currentRotation = 0;
+let flipH = false;
+let flipV = false;
+let cropMode = false;
+let cropStartX = 0, cropStartY = 0;
+let cropRect = null;
+let isDragging = false;
+
+// 滤镜参数
+const filterState = {
+  brightness: 100,
+  contrast: 100,
+  saturate: 100,
+  grayscale: 0,
+  blur: 0,
+  sepia: 0
+};
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      originalImage = img;
+      canvas.style.display = 'block';
+      placeholder.style.display = 'none';
+      document.getElementById('exportBtn').disabled = false;
+      resetAll();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function getFilterString() {
+  return `brightness(${filterState.brightness}%) contrast(${filterState.contrast}%) saturate(${filterState.saturate}%) grayscale(${filterState.grayscale}%) blur(${filterState.blur}px) sepia(${filterState.sepia}%)`;
+}
+
+function render() {
+  if (!originalImage) return;
+  
+  // 根据旋转角度计算画布尺寸
+  const isRotate90 = currentRotation % 180 !== 0;
+  const w = isRotate90 ? originalImage.height : originalImage.width;
+  const h = isRotate90 ? originalImage.width : originalImage.height;
+  
+  canvas.width = w;
+  canvas.height = h;
+  
+  ctx.save();
+  ctx.filter = getFilterString();
+  
+  // 移动中心、旋转、翻转
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(currentRotation * Math.PI / 180);
+  ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+  ctx.drawImage(originalImage, -originalImage.width / 2, -originalImage.height / 2);
+  ctx.restore();
+}
+
+function rotate(deg) {
+  currentRotation += deg;
+  render();
+}
+
+function flipHorizontal() {
+  flipH = !flipH;
+  render();
+}
+
+function flipVertical() {
+  flipV = !flipV;
+  render();
+}
+
+// 裁剪模式
+function toggleCropMode() {
+  cropMode = !cropMode;
+  cropModeBtn.classList.toggle('active', cropMode);
+  canvas.style.cursor = cropMode ? 'crosshair' : 'default';
+  if (!cropMode) {
+    cropOverlay.style.display = 'none';
+    cropRect = null;
+  }
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!cropMode || !originalImage) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  cropStartX = (e.clientX - rect.left) * scaleX;
+  cropStartY = (e.clientY - rect.top) * scaleY;
+  isDragging = true;
+  cropOverlay.style.display = 'block';
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging || !cropMode) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const currentX = (e.clientX - rect.left) * scaleX;
+  const currentY = (e.clientY - rect.top) * scaleY;
+  
+  const x = Math.min(cropStartX, currentX);
+  const y = Math.min(cropStartY, currentY);
+  const w = Math.abs(currentX - cropStartX);
+  const h = Math.abs(currentY - cropStartY);
+  
+  // 转换为overlay的屏幕坐标
+  const overlayX = x / scaleX;
+  const overlayY = y / scaleY;
+  
+  cropOverlay.style.left = overlayX + 'px';
+  cropOverlay.style.top = overlayY + 'px';
+  cropOverlay.style.width = (w / scaleX) + 'px';
+  cropOverlay.style.height = (h / scaleY) + 'px';
+  
+  cropRect = { x, y, w, h };
+});
+
+canvas.addEventListener('mouseup', () => {
+  isDragging = false;
+});
+
+function applyCrop() {
+  if (!cropRect || !originalImage) return;
+  
+  // 创建新画布裁剪
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = cropRect.w;
+  tempCanvas.height = cropRect.h;
+  const tempCtx = tempCanvas.getContext('2d');
+  
+  tempCtx.filter = getFilterString();
+  tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+  tempCtx.rotate(currentRotation * Math.PI / 180);
+  tempCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+  tempCtx.drawImage(originalImage, -originalImage.width / 2, -originalImage.height / 2);
+  
+  // 把裁剪后的图作为新的原图
+  tempCanvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      originalImage = img;
+      currentRotation = 0;
+      flipH = false;
+      flipV = false;
+      cropRect = null;
+      cropOverlay.style.display = 'none';
+      toggleCropMode();
+      render();
+    };
+    img.src = url;
+  });
+}
+
+// 滤镜预设
+document.querySelectorAll('.filter-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    const filter = btn.dataset.filter;
+    const presets = {
+      none: { brightness: 100, contrast: 100, saturate: 100, grayscale: 0, blur: 0, sepia: 0 },
+      warm: { brightness: 105, contrast: 110, saturate: 120, grayscale: 0, blur: 0, sepia: 20 },
+      cool: { brightness: 100, contrast: 105, saturate: 90, grayscale: 0, blur: 0, sepia: 0 },
+      vintage: { brightness: 95, contrast: 90, saturate: 80, grayscale: 0, blur: 0, sepia: 50 },
+      bw: { brightness: 100, contrast: 110, saturate: 0, grayscale: 100, blur: 0, sepia: 0 },
+      film: { brightness: 98, contrast: 115, saturate: 110, grayscale: 0, blur: 0, sepia: 15 }
+    };
+    
+    Object.assign(filterState, presets[filter]);
+    syncSliders();
+    render();
+  });
+});
+
+// 滑块事件
+const sliders = ['brightness', 'contrast', 'saturate', 'grayscale', 'blur', 'sepia'];
+sliders.forEach(key => {
+  const el = document.getElementById(key);
+  el.addEventListener('input', () => {
+    filterState[key] = parseInt(el.value);
+    document.getElementById(key + 'Val').textContent = key === 'blur' ? el.value + 'px' : el.value + '%';
+    // 取消预设选中
+    document.querySelectorAll('.filter-preset').forEach(b => b.classList.remove('active'));
+    render();
+  });
+});
+
+function syncSliders() {
+  sliders.forEach(key => {
+    document.getElementById(key).value = filterState[key];
+    document.getElementById(key + 'Val').textContent = key === 'blur' 
+      ? filterState[key] + 'px' 
+      : filterState[key] + '%';
+  });
+}
+
+function resetAll() {
+  Object.assign(filterState, { brightness: 100, contrast: 100, saturate: 100, grayscale: 0, blur: 0, sepia: 0 });
+  currentRotation = 0;
+  flipH = false;
+  flipV = false;
+  syncSliders();
+  document.querySelectorAll('.filter-preset').forEach((b, i) => {
+    b.classList.toggle('active', i === 0);
+  });
+  render();
+}
+
+function exportImage() {
+  const link = document.createElement('a');
+  link.download = 'edited-image.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+</script>
+
+</body>
+</html>
